@@ -13,13 +13,11 @@
  * Usage: thumbnail.php?id=<32-hex-video-id>[&t=20]
  */
 
+require_once __DIR__ . '/thumbnail-common.php';
+
 $metaDir = __DIR__ . '/meta/';
 $uploadDir = __DIR__ . '/uploads/';
 $thumbDir = __DIR__ . '/thumbs/';
-
-// Percentage of the video duration at which to grab the frame
-const THUMB_PERCENT = 20;
-const THUMB_WIDTH = 1280;
 
 function thumb_fail(): void
 {
@@ -66,9 +64,22 @@ if (!is_dir($thumbDir)) {
 
 $thumbPath = $thumbDir . $id . '.jpg';
 
-// Reuse cached thumbnail if it exists and is newer than the video
-if (!is_file($thumbPath) || filemtime($thumbPath) < filemtime($videoPath)) {
-  generateThumbnail($videoPath, $thumbPath, $percent);
+// Reuse cached thumbnail if it exists and is newer than the video.
+// Also honor a per-request percentage override (?t=) by regenerating when
+// the requested timestamp differs from the one used for the cached frame.
+$needGenerate = !is_file($thumbPath) || filemtime($thumbPath) < filemtime($videoPath);
+if (!$needGenerate) {
+  $cachedPercent = isset($meta['thumb_percent']) ? (float) $meta['thumb_percent'] : THUMB_PERCENT;
+  if (isset($_GET['t']) && is_numeric($_GET['t']) && abs($cachedPercent - $percent) > 0.001) {
+    $needGenerate = true;
+  }
+}
+
+if ($needGenerate) {
+  $duration = isset($meta['duration']) && is_numeric($meta['duration']) && (float) $meta['duration'] > 0
+    ? (float) $meta['duration']
+    : null; // null => generateThumbnail probes with ffprobe itself
+  generateThumbnail($videoPath, $thumbPath, $duration, $percent);
   // On failure we fall through: a stale cached thumb is served if present,
   // otherwise the placeholder below keeps embedders from seeing a broken URL.
 }
@@ -83,72 +94,3 @@ if (is_file($thumbPath)) {
 }
 
 thumb_fail();
-
-/**
- * Grab a single frame from the video at $percent of its total duration.
- */
-function generateThumbnail(string $videoPath, string $thumbPath, float $percent): bool
-{
-  $duration = getVideoDuration($videoPath);
-  // For very short (or unknown-duration) videos, fall back to 1 second in
-  $timestamp = $duration > 0 ? ($duration * ($percent / 100)) : 1.0;
-  if ($duration > 0) {
-    $timestamp = max(0.1, min($timestamp, max(0.1, $duration - 0.1)));
-  }
-
-  $ffmpeg = trim((string) @shell_exec('which ffmpeg 2>/dev/null'));
-  if ($ffmpeg === '') {
-    $ffmpeg = '/usr/bin/ffmpeg';
-  }
-
-  $tmpPath = $thumbPath . '.' . getmypid() . '.tmp.jpg';
-  $cmd = sprintf(
-    '%s -hide_banner -loglevel error -ss %.3f -i %s -frames:v 1 -update 1 -vf "scale=%d:-2" -q:v 3 -y %s 2>/dev/null',
-    escapeshellcmd($ffmpeg),
-    $timestamp,
-    escapeshellarg($videoPath),
-    THUMB_WIDTH,
-    escapeshellarg($tmpPath)
-  );
-
-  @exec($cmd, $out, $retCode);
-
-  if ($retCode === 0 && is_file($tmpPath) && filesize($tmpPath) > 0) {
-    if (@rename($tmpPath, $thumbPath)) {
-      @chmod($thumbPath, 0644);
-      return true;
-    }
-    @unlink($tmpPath);
-  }
-  @unlink($tmpPath);
-  return false;
-}
-
-/**
- * Get video duration in seconds using ffprobe (falls back to parsing
- * ffmpeg output if ffprobe is unavailable). Returns 0 on failure.
- */
-function getVideoDuration(string $videoPath): float
-{
-  $ffprobe = trim((string) @shell_exec('which ffprobe 2>/dev/null'));
-  if ($ffprobe !== '') {
-    $cmd = sprintf(
-      '%s -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s',
-      escapeshellcmd($ffprobe),
-      escapeshellarg($videoPath)
-    );
-    $out = @shell_exec($cmd);
-    if ($out !== null && is_numeric(trim($out))) {
-      return max(0.0, (float) trim($out));
-    }
-  }
-
-  // Fallback: parse Duration from `ffmpeg -i` stderr
-  $cmd = sprintf('%s -i %s 2>&1', escapeshellcmd('/usr/bin/ffmpeg'), escapeshellarg($videoPath));
-  $out = @shell_exec($cmd);
-  if ($out && preg_match('/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/', $out, $m)) {
-    return ((int) $m[1]) * 3600 + ((int) $m[2]) * 60 + (float) $m[3];
-  }
-
-  return 0.0;
-}
