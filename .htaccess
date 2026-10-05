@@ -1,0 +1,27 @@
+# Deny direct listing of upload/meta directories
+Options -Indexes
+
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 512M
+    php_value post_max_size 520M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+</IfModule>
+
+<IfModule mod_php.c>
+    php_value upload_max_filesize 512M
+    php_value post_max_size 520M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+</IfModule>
+
+# Rewrite rules
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Block direct access to meta directory and config
+    RewriteRule ^meta/ - [F,L]
+    RewriteRule ^config\.php$ - [F,L]
+</IfModule>

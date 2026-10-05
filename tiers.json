@@ -1,0 +1,6 @@
+{
+  "24h": { "seconds": 86400,   "limit": null, "label": "24 hours" },
+  "1w":  { "seconds": 604800,  "limit": 20,   "label": "1 week"   },
+  "2w":  { "seconds": 1209600, "limit": 10,   "label": "2 weeks"  },
+  "1mo": { "seconds": 2592000, "limit": 5,    "label": "1 month"  }
+}
