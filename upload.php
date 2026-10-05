@@ -22,6 +22,94 @@ function phpBytesToInt(string $value): int {
   }
 }
 
+// Percentage of total play time at which to grab the thumbnail frame.
+// Using a percentage (instead of a fixed timestamp) means short videos
+// still get a representative frame rather than a black/blank opening.
+if (!defined('THUMB_PERCENT')) {
+  define('THUMB_PERCENT', 20);
+}
+
+/**
+ * Probe a video file for duration and dimensions via ffprobe.
+ * Returns ['duration' => float|null, 'width' => int|null, 'height' => int|null].
+ */
+function probeVideo(string $path): array {
+  $result = ['duration' => null, 'width' => null, 'height' => null];
+
+  $ffprobe = trim((string) @shell_exec('which ffprobe 2>/dev/null'));
+  if ($ffprobe === '') {
+    return $result;
+  }
+
+  $cmd = sprintf(
+    '%s -v error -select_streams v:0 -show_entries stream=width,height -show_entries format=duration -of json %s',
+    escapeshellcmd($ffprobe),
+    escapeshellarg($path)
+  );
+  $out = @shell_exec($cmd);
+  $data = $out ? json_decode($out, true) : null;
+  if (!is_array($data)) {
+    return $result;
+  }
+
+  if (isset($data['format']['duration']) && is_numeric($data['format']['duration'])) {
+    $result['duration'] = round((float) $data['format']['duration'], 3);
+  }
+  $stream = $data['streams'][0] ?? null;
+  if ($stream) {
+    if (isset($stream['width']))  $result['width']  = (int) $stream['width'];
+    if (isset($stream['height'])) $result['height'] = (int) $stream['height'];
+  }
+
+  return $result;
+}
+
+/**
+ * Grab a single JPEG frame from the video at THUMB_PERCENT of its duration
+ * and cache it in /thumbs/<id>.jpg. Called right after upload so Discord
+ * embeds are ready immediately when the link is posted.
+ */
+function ensureThumbnail(string $videoPath, string $thumbDir, string $id, ?float $duration): bool {
+  if (!is_dir($thumbDir)) {
+    @mkdir($thumbDir, 0755, true);
+  }
+
+  $ffmpeg = trim((string) @shell_exec('which ffmpeg 2>/dev/null'));
+  if ($ffmpeg === '') {
+    return false;
+  }
+
+  // Frame time = percentage of play time; clamp away from the very ends.
+  // Short videos (< ~1s or unknown duration) fall back to 1 second in.
+  if ($duration !== null && $duration > 0) {
+    $timestamp = max(0.1, min($duration * (THUMB_PERCENT / 100), $duration - 0.1));
+  } else {
+    $timestamp = 1.0;
+  }
+
+  $thumbPath = $thumbDir . $id . '.jpg';
+  $tmpPath = $thumbPath . '.' . getmypid() . '.tmp.jpg';
+
+  $cmd = sprintf(
+    '%s -hide_banner -loglevel error -ss %.3f -i %s -frames:v 1 -update 1 -vf "scale=1280:-2" -q:v 3 -y %s 2>/dev/null',
+    escapeshellcmd($ffmpeg),
+    $timestamp,
+    escapeshellarg($videoPath),
+    escapeshellarg($tmpPath)
+  );
+
+  @exec($cmd, $out, $retCode);
+
+  if ($retCode === 0 && is_file($tmpPath) && filesize($tmpPath) > 0) {
+    @rename($tmpPath, $thumbPath);
+    @chmod($thumbPath, 0644);
+    return true;
+  }
+
+  @unlink($tmpPath);
+  return false;
+}
+
 function getPhpUploadConfig(): array {
   return [
     'loaded_ini' => php_ini_loaded_file() ?: 'none',
@@ -209,6 +297,11 @@ if (!move_uploaded_file($file['tmp_name'], $destPath)) {
 
 // Save metadata
 $expiresAtTs = time() + $tier['seconds'];
+
+// Probe the video for duration / dimensions so we can grab a thumbnail
+// frame at a percentage of play time (used for Discord/og:image previews).
+$videoInfo = probeVideo($destPath);
+
 $meta = [
   'id' => $id,
   'original_name' => $safeOrigName,
@@ -219,6 +312,9 @@ $meta = [
   'uploaded_at' => time(),
   'expires_at' => $expiresAtTs,
   'expiry_tier' => $tierKey,
+  'duration' => $videoInfo['duration'],
+  'width' => $videoInfo['width'],
+  'height' => $videoInfo['height'],
 ];
 
 $metaPath = $metaDir . $id . '.json';
@@ -231,9 +327,19 @@ if ($metaJson === false || file_put_contents($metaPath, $metaJson) === false) {
   exit;
 }
 
+// Grab a thumbnail frame at THUMB_PERCENT of play time so link previews
+// (Discord embeds, etc.) show an image instead of a bare URL. This is
+// best-effort: if ffmpeg is unavailable, thumbnail.php generates it lazily.
+$thumbDir = __DIR__ . '/thumbs/';
+$thumbnailReady = ensureThumbnail($destPath, $thumbDir, $id, $videoInfo['duration']);
+if (!$thumbnailReady) {
+  error_log('Video thumbnail generation deferred for upload ' . $id . ' (ffmpeg unavailable or failed).');
+}
+
 echo json_encode([
   'success' => true,
   'id' => $id,
   'expires_at' => $expiresAtTs,
   'expiry_tier' => $tierKey,
+  'thumbnail' => $thumbnailReady ? 'thumbs/' . $id . '.jpg' : null,
 ]);

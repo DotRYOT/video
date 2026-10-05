@@ -49,6 +49,21 @@ if (!isset($error)) {
   $expiresAt = is_numeric($meta['expires_at']) ? (int) $meta['expires_at'] : strtotime($meta['expires_at']);
   $ext = $meta['extension'];
 
+  // Thumbnail for link previews (Discord embeds, Twitter cards, etc.).
+  // thumbnail.php grabs a frame at ~20% of the video's play time.
+  $thumbnailUrl = 'thumbnail.php?id=' . $id;
+
+  // Build an absolute URL for the thumbnail so embedders can fetch it
+  $scheme = (($_SERVER['HTTPS'] ?? 'off') !== 'off' && $_SERVER['HTTPS'] !== 'false') ? 'https' : 'http';
+  $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+  $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/view.php')), '/');
+  $thumbAbsolute = $scheme . '://' . $host . $scriptDir . '/thumbnail.php?id=' . $id;
+  $ogDescription = 'Temporary video • ' . formatBytes($fileSize);
+  if (!empty($meta['duration'])) {
+    $ogDescription .= ' • ' . gmdate('H:i:s', (int) round((float) $meta['duration']));
+  }
+  $ogDescription .= '. Auto-deletes ' . date('M j, Y g:i A', (int) $expiresAt) . '.';
+
   // Determine MIME for video tag
   $mimeMap = [
     'mp4' => 'video/mp4',
@@ -78,6 +93,20 @@ function formatBytes($bytes)
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?php echo isset($error) ? 'Video Not Found' : $originalName . ' - TempVid'; ?></title>
+  <?php if (!isset($error)): ?>
+    <!-- Link preview metadata (Discord, Twitter/X, Facebook, Telegram, etc.) -->
+    <meta property="og:type" content="video.other">
+    <meta property="og:title" content="<?php echo $originalName; ?>">
+    <meta property="og:description" content="<?php echo htmlspecialchars($ogDescription, ENT_QUOTES, 'UTF-8'); ?>">
+    <meta property="og:image" content="<?php echo htmlspecialchars($thumbAbsolute, ENT_QUOTES, 'UTF-8'); ?>">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:site_name" content="TempVid">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<?php echo $originalName; ?>">
+    <meta name="twitter:description" content="<?php echo htmlspecialchars($ogDescription, ENT_QUOTES, 'UTF-8'); ?>">
+    <meta name="twitter:image" content="<?php echo htmlspecialchars($thumbAbsolute, ENT_QUOTES, 'UTF-8'); ?>">
+  <?php endif; ?>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -387,7 +416,7 @@ function formatBytes($bytes)
     <?php else: ?>
       <div class="player-card fade-in">
         <div class="video-wrapper">
-          <video id="videoPlayer" controls preload="metadata" playsinline>
+          <video id="videoPlayer" controls preload="metadata" playsinline poster="<?php echo htmlspecialchars($thumbnailUrl, ENT_QUOTES, 'UTF-8'); ?>">
             <source src="<?php echo htmlspecialchars($videoUrl, ENT_QUOTES, 'UTF-8'); ?>"
               type="<?php echo $videoMime; ?>">
             Your browser does not support the video tag.
