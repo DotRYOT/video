@@ -6,6 +6,9 @@ Options -Indexes
     RewriteEngine On
     RewriteRule ^meta/ - [F,L]
     RewriteRule ^config\.php$ - [F,L]
+    # Internal-only helpers (should never be fetched directly)
+    RewriteRule ^thumbnail-common\.php$ - [F,L]
+    RewriteRule ^thumbnail-check\.php$ - [F,L]
 </IfModule>
 
 <IfModule mod_php8.c>
