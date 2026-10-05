@@ -7,6 +7,7 @@ function cleanExpiredFiles()
 {
   $metaDir = __DIR__ . '/meta/';
   $uploadDir = __DIR__ . '/uploads/';
+  $thumbDir = __DIR__ . '/thumbs/';
 
   // Ensure directories exist
   if (!is_dir($uploadDir))
@@ -31,10 +32,14 @@ function cleanExpiredFiles()
 
     $expiryTs = is_numeric($data['expires_at']) ? (int) $data['expires_at'] : strtotime($data['expires_at']);
     if ($expiryTs < $now) {
-      // Expired - delete video file and metadata
+      // Expired - delete video file, thumbnail and metadata
       $videoPath = $uploadDir . ($data['stored_name'] ?? '');
       if (!empty($data['stored_name']) && file_exists($videoPath)) {
         @unlink($videoPath);
+      }
+      $thumbPath = $thumbDir . basename((string) ($data['id'] ?? '')) . '.jpg';
+      if (!empty($data['id']) && file_exists($thumbPath)) {
+        @unlink($thumbPath);
       }
       @unlink($metaFile);
     }
