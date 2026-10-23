@@ -1,0 +1,67 @@
+:root {
+  --primary-bg: #000000;
+  --primary-bg-trans: #000000bf;
+  --secondary-bg: #2c2c2e;
+  --accent-color: #ff4500;
+  --accent-color-transparent: #ff440049;
+  --text-color: #e0e0e0;
+
+  --placeholder-color: #7a7a7a;
+
+  --border-color: #3d4143;
+  // --border-color: #ffffff;
+  --hover-border-color: #505052;
+
+  --button-bg: #323234;
+  --button-hover-bg: #404042;
+
+  --link-color: #008cba;
+  --link-hover-color: #0077a1;
+
+  --success-color: #4caf50;
+  --error-color: #f44336;
+  --warning-color: #ff9800;
+
+  --like-color: #ff3f3f;
+  --bookmark-color: #007eaf;
+
+  --overlay-bg: #00000080;
+
+  --test1: #ff4500;
+  --test2: #111111;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Share+Tech&display=swap');
+
+* {
+  padding: 0;
+  margin: 0;
+  border: none;
+  transition: 1s;
+}
+
+
+body {
+  font-family: "Share Tech", serif;
+  font-weight: 400;
+  font-style: normal;
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-flex-wrap: nowrap;
+  flex-wrap: nowrap;
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-align-content: flex-start;
+  align-content: flex-start;
+  -webkit-align-items: center;
+  align-items: center;
+
+  width: 100%;
+  height: 100svh;
+}
